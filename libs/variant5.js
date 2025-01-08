@@ -7,7 +7,7 @@
  * @param {number | boolean} value
  * @return {boolean} isInteger
  */
-export function isInteger (value) {
+function isInteger (value) {
   if (typeof value === 'boolean') {
     return true
   }
@@ -22,7 +22,7 @@ export function isInteger (value) {
  * @param {number} x
  * @returns {number}
  */
-export const sign = /* #__PURE__ */ Math.sign || function (x) {
+function sign(x) {
   if (x > 0) {
     return 1
   } else if (x < 0) {
@@ -37,9 +37,14 @@ export const sign = /* #__PURE__ */ Math.sign || function (x) {
  * @param {number} x
  * @returns {number}
  */
-export const log2 = /* #__PURE__ */ Math.log2 || function log2 (x) {
-  return Math.log(x) / Math.LN2
+function log2(x) {
+  if (x <= 0) {
+    throw new Error('Input must be a positive number');
+  }
+  return Math.log(x) / Math.LN2;
 }
+
+
 
 
 
@@ -49,7 +54,7 @@ export const log2 = /* #__PURE__ */ Math.log2 || function log2 (x) {
  * @return {SplitValue}
  *              Returns an object containing sign, coefficients, and exponent
  */
-export function splitNumber (value) {
+function splitNumber (value) {
   // parse the input value
   const match = String(value).toLowerCase().match(/^(-?)(\d+\.?\d*)(e([+-]?\d+))?$/)
   if (!match) {
@@ -64,17 +69,14 @@ export function splitNumber (value) {
   exponent += (dot !== -1) ? (dot - 1) : (digits.length - 1)
 
   const coefficients = digits
-    .replace('.', '') // remove the dot (must be removed before removing leading zeros)
-    .replace(/^0*/, function (zeros) {
-      // remove leading zeros, add their count to the exponent
-      exponent -= zeros.length
-      return ''
-    })
-    .replace(/0*$/, '') // remove trailing zeros
-    .split('')
-    .map(function (d) {
-      return parseInt(d)
-    })
+  .replace('.', '') // remove the dot
+  .replace(/^0+/, function (zeros) {
+    exponent -= zeros.length; // зменшення експоненти
+    return '';
+  })
+  .replace(/0*$/, '') // remove trailing zeros
+  .split('')
+  .map(Number);
 
   if (coefficients.length === 0) {
     coefficients.push(0)
@@ -90,42 +92,51 @@ export function splitNumber (value) {
  * @param {number} [precision=undefined]  Optional number of decimals after the
  *                                        decimal point. null by default.
  */
-export function toFixed (value, precision) {
+function toFixed(value, precision) {
   if (isNaN(value) || !isFinite(value)) {
-    return String(value)
+    return String(value);
   }
 
-  const splitValue = splitNumber(value)
-  const rounded = (typeof precision === 'number')
-    ? roundDigits(splitValue, splitValue.exponent + 1 + precision)
-    : splitValue
-  let c = rounded.coefficients
-  let p = rounded.exponent + 1 // exponent may have changed
+  // Округляємо число до потрібної кількості цифр після коми
+  const factor = Math.pow(10, precision);
+  const roundedValue = Math.round(value * factor) / factor;
 
-  // append zeros if needed
-  const pp = p + (precision || 0)
-  if (c.length < pp) {
-    c = c.concat(zeros(pp - c.length))
+  // Форматуємо результат до потрібної точності
+  let result = roundedValue.toString();
+  const decimalIndex = result.indexOf('.');
+
+  if (precision > 0) {
+    if (decimalIndex === -1) {
+      // Якщо в числі немає десяткової крапки, додаємо її
+      result += '.';
+    }
+
+    // Додаємо необхідну кількість нулів
+    const decimals = result.split('.')[1] || '';
+    const missingZeros = precision - decimals.length;
+    result += '0'.repeat(missingZeros);
   }
 
-  // prepend zeros if needed
-  if (p < 0) {
-    c = zeros(-p + 1).concat(c)
-    p = 1
-  }
-
-  // insert a dot if needed
-  if (p < c.length) {
-    c.splice(p, 0, (p === 0) ? '0.' : '.')
-  }
-
-  return rounded.sign + c.join('')
+  return result;
 }
 
 /**
  * Minimum number added to one that makes the result different than one
  */
-export const DBL_EPSILON = Number.EPSILON || 2.2204460492503130808472633361816E-16
+const DBL_EPSILON = Number.EPSILON || 2.2204460492503130808472633361816E-16
+
+function roundDigits(splitValue, precision) {
+  const { coefficients, exponent } = splitValue;
+
+  if (precision < 0) {
+    return { coefficients: [0], exponent: 0 };
+  }
+
+  const factor = Math.pow(10, precision - coefficients.length);
+  const rounded = Math.round(parseFloat(coefficients.join('')) * factor) / factor;
+  return splitNumber(rounded);
+}
+
 
 /**
  * Compares two floating point numbers.
@@ -136,33 +147,35 @@ export const DBL_EPSILON = Number.EPSILON || 2.2204460492503130808472633361816E-
  *                            test whether x and y are exactly equal.
  * @return {boolean} whether the two numbers are nearly equal
  */
-export function nearlyEqual (x, y, epsilon) {
-  // if epsilon is null or undefined, test whether x and y are exactly equal
-  if (epsilon === null || epsilon === undefined) {
-    return x === y
-  }
-
-  if (x === y) {
+function nearlyEqual(x, y, epsilon) {
+  // Handle Infinity
+  if (!isFinite(x) || !isFinite(y)) {
+    return false;
+    // Handle NaN
+  } else if(x === NaN || y === NaN) {
+    return false;
+  } else if(epsilon === null || epsilon === undefined) {
+    return x === y;
+  } else if(x === y) {
     return true
+  } else {
+    const diff = Math.abs(x - y);
+    return diff <= Math.max(Math.abs(x), Math.abs(y)) * epsilon;
   }
+}
 
-  // NaN
-  if (isNaN(x) || isNaN(y)) {
-    return false
-  }
+function zeros(count) {
+  return Array(count).fill(0);
+}
 
-  // at this point x and y should be finite
-  if (isFinite(x) && isFinite(y)) {
-    // check numbers are very close, needed when comparing numbers near zero
-    const diff = Math.abs(x - y)
-    if (diff < DBL_EPSILON) {
-      return true
-    } else {
-      // use relative error
-      return diff <= Math.max(Math.abs(x), Math.abs(y)) * epsilon
-    }
-  }
-
-  // Infinite and Number or negative Infinite and positive Infinite cases
-  return false
+module.exports = {
+  zeros,
+  isInteger,
+  sign,
+  log2,
+  splitNumber,
+  toFixed,
+  DBL_EPSILON,
+  nearlyEqual,
+  roundDigits,
 }
